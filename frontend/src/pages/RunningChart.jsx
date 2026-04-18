@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MapPin, Plus, X } from 'lucide-react';
+import { MapPin, Plus, X, Camera, LocateFixed, Loader2, Edit2 } from 'lucide-react';
 import { loadJson, saveJson } from '../utils/storage';
+import Tesseract from 'tesseract.js';
 
 const INITIAL_FORM_STATE = {
   vehicleId: '',
@@ -25,6 +26,11 @@ const RunningChart = () => {
   const [journeys, setJourneys] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState(INITIAL_FORM_STATE);
+  const [editingId, setEditingId] = useState(null);
+  
+  // Loading states
+  const [isLocating, setIsLocating] = useState(false);
+  const [isOcrLoading, setIsOcrLoading] = useState({ startOdometer: false, endOdometer: false });
 
   useEffect(() => {
     setVehicles(loadJson('vehicles', []));
@@ -37,13 +43,34 @@ const RunningChart = () => {
     return acc + Math.max(end - start, 0);
   }, 0), [journeys]);
 
+  const handleOpenModal = (journey = null) => {
+    if (journey && journey.id) {
+      setForm(journey);
+      setEditingId(journey.id);
+    } else {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+
+      setForm({
+        ...INITIAL_FORM_STATE,
+        startDate: `${year}-${month}-${day}`,
+        startTime: `${hours}:${minutes}`
+      });
+      setEditingId(null);
+    }
+    setIsModalOpen(true);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.vehicleId || !form.startDate || !form.startTime || !form.startLocation || !form.startOdometer) {
       return;
     }
-    const newJourney = {
-      id: Date.now(),
+    const baseEntry = {
       vehicleId: Number(form.vehicleId),
       startDate: form.startDate,
       startTime: form.startTime,
@@ -60,16 +87,86 @@ const RunningChart = () => {
       notes: form.notes,
       returnTrip: form.returnTrip,
     };
-    const updated = [newJourney, ...journeys];
+
+    let updated;
+    if (editingId) {
+      updated = journeys.map(j => j.id === editingId ? { id: editingId, ...baseEntry } : j);
+    } else {
+      updated = [{ id: Date.now(), ...baseEntry }, ...journeys];
+    }
+    
     setJourneys(updated);
     saveJson('journeyEntries', updated);
     setForm(INITIAL_FORM_STATE);
+    setEditingId(null);
     setIsModalOpen(false);
   };
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setForm(INITIAL_FORM_STATE);
+    setEditingId(null);
+  };
+
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const data = await response.json();
+          if (data && data.display_name) {
+            // prioritize extracting a shorter readable string vs full long address
+            const addr = data.address;
+            const shortLocation = addr.suburb || addr.neighbourhood || addr.city_district || addr.town || addr.city || data.display_name.split(',')[0];
+            setForm(prev => ({ ...prev, startLocation: shortLocation }));
+          }
+        } catch (error) {
+          console.error("Error reverse geocoding:", error);
+          alert("Could not fetch address automatically. Please type it manually.");
+        } finally {
+          setIsLocating(false);
+        }
+      },
+      (error) => {
+        setIsLocating(false);
+        console.error("Error getting location:", error);
+        alert("Location access denied or failed. Please type it manually.");
+      },
+      { timeout: 10000 }
+    );
+  };
+
+  const handleOcrUpload = async (e, fieldName) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsOcrLoading(prev => ({ ...prev, [fieldName]: true }));
+
+    try {
+      const result = await Tesseract.recognize(file, 'eng');
+      const text = result.data.text;
+      
+      // Basic regex to strip non-number characters for odometer reading
+      const numbersOnly = text.replace(/\D/g, '');
+      
+      if (numbersOnly.length > 0) {
+        setForm(prev => ({ ...prev, [fieldName]: numbersOnly }));
+      } else {
+        alert("OCR failed: Could not detect any clear numbers in the image.");
+      }
+    } catch (error) {
+      console.error("OCR Error:", error);
+      alert("Error analyzing image.");
+    } finally {
+      setIsOcrLoading(prev => ({ ...prev, [fieldName]: false }));
+      e.target.value = ''; // Reset input to allow re-upload 
+    }
   };
 
   return (
@@ -86,7 +183,7 @@ const RunningChart = () => {
           </div>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => handleOpenModal(null)}
           className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-sm transition-all active:scale-95"
         >
           <Plus className="h-5 w-5" />
@@ -118,9 +215,9 @@ const RunningChart = () => {
                 <th className="px-6 py-4 text-left rounded-tl-xl rounded-bl-xl">Vehicle</th>
                 <th className="px-6 py-4 text-left">Start</th>
                 <th className="px-6 py-4 text-left">End</th>
-                <th className="px-6 py-4 text-left">Distance</th>
                 <th className="px-6 py-4 text-left">Fuel Used</th>
-                <th className="px-6 py-4 text-left rounded-tr-xl rounded-br-xl">Purpose</th>
+                <th className="px-6 py-4 text-left">Purpose</th>
+                <th className="px-6 py-4 text-right rounded-tr-xl rounded-br-xl">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-50">
@@ -141,6 +238,15 @@ const RunningChart = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{distance} km</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-600">{journey.fuelUsed ? `${journey.fuelUsed} L` : '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">{journey.purpose || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                      <button
+                        onClick={() => handleOpenModal(journey)}
+                        className="text-gray-400 hover:text-indigo-600 transition-colors p-1"
+                        title="Edit Journey"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -165,7 +271,7 @@ const RunningChart = () => {
             <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-indigo-600 text-white rounded-t-3xl">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <MapPin className="h-5 w-5" />
-                Start Journey
+                {editingId ? 'Edit Journey' : 'Start Journey'}
               </h2>
               <button 
                 onClick={handleCloseModal}
@@ -209,14 +315,25 @@ const RunningChart = () => {
 
                 <div className="space-y-1.5 lg:col-span-2">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Start Location</label>
-                  <input
-                    required
-                    type="text"
-                    value={form.startLocation}
-                    onChange={(e) => setForm({ ...form, startLocation: e.target.value })}
-                    className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
-                    placeholder="Where are you starting?"
-                  />
+                  <div className="relative">
+                    <input
+                      required
+                      type="text"
+                      value={form.startLocation}
+                      onChange={(e) => setForm({ ...form, startLocation: e.target.value })}
+                      className="w-full pl-4 pr-12 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                      placeholder="Where are you starting?"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleGetLocation}
+                      disabled={isLocating}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors disabled:opacity-50"
+                      title="Get Current Location"
+                    >
+                      {isLocating ? <Loader2 className="w-5 h-5 animate-spin" /> : <LocateFixed className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Start Date</label>
@@ -279,26 +396,56 @@ const RunningChart = () => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Start Odometer (km)</label>
-                  <input
-                    required
-                    type="number"
-                    value={form.startOdometer}
-                    onChange={(e) => setForm({ ...form, startOdometer: e.target.value })}
-                    className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
-                    placeholder="Starting km"
-                  />
+                  <label className="flex items-center justify-between text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
+                    <span>Start Odometer (km)<span className="text-red-500">*</span></span>
+                  </label>
+                  <div className="relative flex items-center gap-2">
+                    <input
+                      required
+                      type="number"
+                      value={form.startOdometer}
+                      onChange={(e) => setForm({ ...form, startOdometer: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                      placeholder="Start km"
+                    />
+                    <label className="flex-shrink-0 cursor-pointer p-3 bg-gray-100 hover:bg-indigo-50 text-gray-500 hover:text-indigo-600 rounded-xl transition-colors min-w-[52px] text-center" title="Capture with Camera">
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        capture="environment" 
+                        onChange={(e) => handleOcrUpload(e, 'startOdometer')} 
+                        className="hidden" 
+                      />
+                      {isOcrLoading.startOdometer ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : <Camera className="w-5 h-5 mx-auto" />}
+                    </label>
+                  </div>
                 </div>
+
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">End Odometer (km)</label>
-                  <input
-                    type="number"
-                    value={form.endOdometer}
-                    onChange={(e) => setForm({ ...form, endOdometer: e.target.value })}
-                    className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
-                    placeholder="Ending km"
-                  />
+                  <label className="flex items-center justify-between text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">
+                    <span>End Odometer (km)</span>
+                  </label>
+                  <div className="relative flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={form.endOdometer}
+                      onChange={(e) => setForm({ ...form, endOdometer: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                      placeholder="End km"
+                    />
+                    <label className="flex-shrink-0 cursor-pointer p-3 bg-gray-100 hover:bg-indigo-50 text-gray-500 hover:text-indigo-600 rounded-xl transition-colors min-w-[52px] text-center" title="Capture with Camera">
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        capture="environment" 
+                        onChange={(e) => handleOcrUpload(e, 'endOdometer')} 
+                        className="hidden" 
+                      />
+                      {isOcrLoading.endOdometer ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : <Camera className="w-5 h-5 mx-auto" />}
+                    </label>
+                  </div>
                 </div>
+
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Fuel Used (L)</label>
                   <input
