@@ -8,11 +8,20 @@ const Reports = () => {
   const [totals, setTotals] = useState({});
 
   useEffect(() => {
-    const fuel = loadJson('fuelEntries', []);
-    const services = loadJson('serviceEntries', []);
-    const expenses = loadJson('expenseEntries', []);
-    const modifications = loadJson('modificationEntries', []);
-    const tires = loadJson('tireEntries', []);
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const isAdmin = currentUser.role === 'admin';
+    let loadedVehicles = loadJson('vehicles', []);
+    if (!isAdmin) {
+      loadedVehicles = loadedVehicles.filter(v => v.assignedDriverId === currentUser.id);
+    }
+    const validIds = loadedVehicles.map(v => v.id);
+    const filter = (arr) => isAdmin ? arr : arr.filter(e => validIds.includes(e.vehicleId));
+
+    const fuel = filter(loadJson('fuelEntries', []));
+    const services = filter(loadJson('serviceEntries', []));
+    const expenses = filter(loadJson('expenseEntries', []));
+    const modifications = filter(loadJson('modificationEntries', []));
+    const tires = filter(loadJson('tireEntries', []));
 
     const data = {
       fuel: fuel.reduce((sum, item) => sum + Number(item.cost || 0), 0),

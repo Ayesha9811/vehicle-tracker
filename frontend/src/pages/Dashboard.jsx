@@ -63,31 +63,39 @@ const Dashboard = () => {
   const [viewAllTime, setViewAllTime] = useState(false);
 
   useEffect(() => {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const isAdmin = currentUser.role === 'admin';
     const storedVehicles = loadJson('vehicles', []);
-    const loadedVehicles = storedVehicles.length ? storedVehicles : sampleVehicles;
+    let loadedVehicles = storedVehicles.length ? storedVehicles : sampleVehicles;
     if (!storedVehicles.length) {
       saveJson('vehicles', loadedVehicles);
     }
+    
+    if (!isAdmin) {
+      loadedVehicles = loadedVehicles.filter(v => v.assignedDriverId === currentUser.id);
+    }
     setVehicles(loadedVehicles);
 
-    setFuelEntries(loadJson('fuelEntries', []));
-    setServiceEntries(loadJson('serviceEntries', []));
-    setExpenseEntries(loadJson('expenseEntries', []));
-    setModificationEntries(loadJson('modificationEntries', []));
-    setTireEntries(loadJson('tireEntries', []));
-    setDocumentEntries(loadJson('documentEntries', []));
-    setJourneys(loadJson('journeyEntries', []));
-    setReminders(loadJson('reminders', []));
+    const validIds = loadedVehicles.map(v => v.id);
+    const filterEntries = (entries) => isAdmin ? entries : entries.filter(e => validIds.includes(e.vehicleId));
 
-    const storedAlerts = loadJson('alerts', []);
-    if (storedAlerts.length) {
-      setAlerts(storedAlerts);
-    } else {
-      setAlerts([
+    setFuelEntries(filterEntries(loadJson('fuelEntries', [])));
+    setServiceEntries(filterEntries(loadJson('serviceEntries', [])));
+    setExpenseEntries(filterEntries(loadJson('expenseEntries', [])));
+    setModificationEntries(filterEntries(loadJson('modificationEntries', [])));
+    setTireEntries(filterEntries(loadJson('tireEntries', [])));
+    setDocumentEntries(filterEntries(loadJson('documentEntries', [])));
+    setJourneys(filterEntries(loadJson('journeyEntries', [])));
+    setReminders(filterEntries(loadJson('reminders', [])));
+
+    let loadedAlerts = loadJson('alerts', []);
+    if (!loadedAlerts.length) {
+      loadedAlerts = [
         { id: 1, message: 'Oil change due soon', vehicleName: loadedVehicles[0]?.name || 'Fleet', timestamp: new Date().toISOString(), severity: 'medium' },
         { id: 2, message: 'Tire pressure warning', vehicleName: loadedVehicles[1]?.name || 'Fleet', timestamp: new Date().toISOString(), severity: 'high' },
-      ]);
+      ];
     }
+    setAlerts(isAdmin ? loadedAlerts : loadedAlerts.filter(a => loadedVehicles.some(v => v.name === a.vehicleName)));
   }, []);
 
   const years = useMemo(() => {

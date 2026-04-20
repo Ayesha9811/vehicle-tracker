@@ -12,8 +12,10 @@ const INITIAL_FORM_STATE = {
   mileage: '',
   tankCapacity: '',
   fuelType: '',
+  fuelType: '',
   chassisNo: '',
   driver: '',
+  assignedDriverId: '',
   plate: '',
   status: 'Idle',
   speed: 0,
@@ -25,6 +27,10 @@ const VehicleList = () => {
   const [filteredVehicles, setFilteredVehicles] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  
+  const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+  const isAdmin = currentUser.role === 'admin';
+  const [drivers, setDrivers] = useState([]);
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -44,6 +50,10 @@ const VehicleList = () => {
     } else {
       setVehicles(loaded);
     }
+    
+    // Load drivers for assignment dropdown
+    const systemUsers = loadJson('users', []);
+    setDrivers(systemUsers.filter(u => u.role === 'driver'));
   }, []);
 
   useEffect(() => {
@@ -63,6 +73,10 @@ const VehicleList = () => {
 
     if (statusFilter !== 'All') {
       filtered = filtered.filter(v => v.status === statusFilter);
+    }
+
+    if (!isAdmin) {
+      filtered = filtered.filter(v => v.assignedDriverId === currentUser.id);
     }
 
     setFilteredVehicles(filtered);
@@ -124,13 +138,15 @@ const VehicleList = () => {
             </span>
           </div>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-sm transition-all active:scale-95"
-        >
-          <Plus className="h-5 w-5" />
-          Add New Vehicle
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => handleOpenModal()}
+            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-semibold shadow-sm transition-all active:scale-95"
+          >
+            <Plus className="h-5 w-5" />
+            Add New Vehicle
+          </button>
+        )}
       </div>
 
       {/* Search and Filters */}
@@ -170,13 +186,15 @@ const VehicleList = () => {
                   <Truck className="h-6 w-6 text-indigo-600" />
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => handleOpenModal(vehicle)}
-                    className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                    title="Edit vehicle"
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleOpenModal(vehicle)}
+                      className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      title="Edit vehicle"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                  )}
                   <Link
                     to={`/vehicles/${vehicle.id}`}
                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -405,15 +423,20 @@ const VehicleList = () => {
                 </h3>
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Driver Name</label>
-                    <input
-                      required
-                      type="text"
-                      className="w-full px-4 py-2.5 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all"
-                      placeholder="e.g. Thomas Shelby"
-                      value={form.driver}
-                      onChange={(e) => setForm({ ...form, driver: e.target.value })}
-                    />
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Driver Assignment</label>
+                    <select
+                      className="w-full px-4 py-2.5 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all font-medium text-gray-700"
+                      value={form.assignedDriverId || ''}
+                      onChange={(e) => {
+                        const selectedDriver = drivers.find(d => d.id === Number(e.target.value));
+                        setForm({ ...form, assignedDriverId: selectedDriver?.id || '', driver: selectedDriver?.name || 'Unassigned' });
+                      }}
+                    >
+                      <option value="">Unassigned</option>
+                      {drivers.map(d => (
+                        <option key={d.id} value={d.id}>{d.name} ({d.email})</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Other Details</label>

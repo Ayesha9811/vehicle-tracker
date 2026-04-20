@@ -12,14 +12,33 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    // Simulate login for demo purposes
-    // In production, this would call the API
+
     setTimeout(() => {
-      localStorage.setItem('token', 'demo-token');
-      toast.success('Login successful');
-      navigate('/dashboard');
+      // Seed default admin if no users exist
+      let storedUsers = JSON.parse(localStorage.getItem('users') || '[]');
+      if (storedUsers.length === 0) {
+        storedUsers = [{
+          id: 1,
+          name: 'System Admin',
+          email: 'admin@test.com',
+          password: 'admin',
+          role: 'admin'
+        }];
+        localStorage.setItem('users', JSON.stringify(storedUsers));
+      }
+
+      const user = storedUsers.find(u => u.email === email && u.password === password);
+
+      if (user) {
+        localStorage.setItem('token', 'demo-token');
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        toast.success('Login successful');
+        navigate('/dashboard');
+      } else {
+        toast.error('Invalid email or password');
+      }
       setLoading(false);
-    }, 1000);
+    }, 800);
   };
 
   return (

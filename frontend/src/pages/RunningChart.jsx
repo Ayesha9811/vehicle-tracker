@@ -33,8 +33,21 @@ const RunningChart = () => {
   const [isOcrLoading, setIsOcrLoading] = useState({ startOdometer: false, endOdometer: false });
 
   useEffect(() => {
-    setVehicles(loadJson('vehicles', []));
-    setJourneys(loadJson('journeyEntries', []));
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const isAdmin = currentUser.role === 'admin';
+    let loadedVehicles = loadJson('vehicles', []);
+    
+    if (!isAdmin) {
+      loadedVehicles = loadedVehicles.filter(v => v.assignedDriverId === currentUser.id);
+    }
+    setVehicles(loadedVehicles);
+
+    let loadedEntries = loadJson('journeyEntries', []);
+    if (!isAdmin) {
+      const validIds = loadedVehicles.map(v => v.id);
+      loadedEntries = loadedEntries.filter(e => validIds.includes(e.vehicleId));
+    }
+    setJourneys(loadedEntries);
   }, []);
 
   const totalDistance = useMemo(() => journeys.reduce((acc, journey) => {

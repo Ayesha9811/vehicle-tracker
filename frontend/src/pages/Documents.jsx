@@ -17,8 +17,21 @@ const Documents = () => {
   const [form, setForm] = useState(INITIAL_FORM_STATE);
 
   useEffect(() => {
-    setVehicles(loadJson('vehicles', []));
-    setDocs(loadJson('documents', []));
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const isAdmin = currentUser.role === 'admin';
+    let loadedVehicles = loadJson('vehicles', []);
+    
+    if (!isAdmin) {
+      loadedVehicles = loadedVehicles.filter(v => v.assignedDriverId === currentUser.id);
+    }
+    setVehicles(loadedVehicles);
+
+    let loadedEntries = loadJson('documents', []);
+    if (!isAdmin) {
+      const validIds = loadedVehicles.map(v => v.id);
+      loadedEntries = loadedEntries.filter(e => validIds.includes(e.vehicleId));
+    }
+    setDocs(loadedEntries);
   }, []);
 
   const totals = useMemo(() => ({ count: docs.length }), [docs]);

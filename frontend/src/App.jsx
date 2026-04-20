@@ -15,6 +15,7 @@ import RunningChart from './pages/RunningChart';
 import Reports from './pages/Reports';
 import Reminders from './pages/Reminders';
 import Settings from './pages/Settings';
+import Users from './pages/Users';
 import MainLayout from './layouts/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
@@ -40,6 +41,7 @@ function App() {
             <Route path="reports" element={<Reports />} />
             <Route path="reminders" element={<Reminders />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="users" element={<Users />} />
             <Route path="alerts" element={<Alerts />} />
           </Route>
         </Routes>

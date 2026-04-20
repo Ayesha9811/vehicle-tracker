@@ -17,8 +17,21 @@ const Expenses = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    setVehicles(loadJson('vehicles', []));
-    setEntries(loadJson('expenseEntries', []));
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const isAdmin = currentUser.role === 'admin';
+    let loadedVehicles = loadJson('vehicles', []);
+    
+    if (!isAdmin) {
+      loadedVehicles = loadedVehicles.filter(v => v.assignedDriverId === currentUser.id);
+    }
+    setVehicles(loadedVehicles);
+
+    let loadedEntries = loadJson('expenseEntries', []);
+    if (!isAdmin) {
+      const validIds = loadedVehicles.map(v => v.id);
+      loadedEntries = loadedEntries.filter(e => validIds.includes(e.vehicleId));
+    }
+    setEntries(loadedEntries);
   }, []);
 
   const totals = useMemo(() => {

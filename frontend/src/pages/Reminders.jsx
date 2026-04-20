@@ -17,8 +17,21 @@ const Reminders = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    setVehicles(loadJson('vehicles', []));
-    setReminders(loadJson('reminders', []));
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+    const isAdmin = currentUser.role === 'admin';
+    let loadedVehicles = loadJson('vehicles', []);
+    
+    if (!isAdmin) {
+      loadedVehicles = loadedVehicles.filter(v => v.assignedDriverId === currentUser.id);
+    }
+    setVehicles(loadedVehicles);
+
+    let loadedEntries = loadJson('reminders', []);
+    if (!isAdmin) {
+      const validIds = loadedVehicles.map(v => v.id);
+      loadedEntries = loadedEntries.filter(e => validIds.includes(e.vehicleId));
+    }
+    setReminders(loadedEntries);
   }, []);
 
   const totals = useMemo(() => ({ count: reminders.length }), [reminders]);

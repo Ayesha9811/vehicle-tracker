@@ -13,11 +13,14 @@ import {
   Route,
   BarChart3,
   Bell,
-  Settings
+  Settings,
+  Users
 } from 'lucide-react';
 
 const Sidebar = () => {
   const location = useLocation();
+  const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+  const isAdmin = currentUser.role === 'admin';
 
   const sections = [
     {
@@ -47,10 +50,14 @@ const Sidebar = () => {
     },
     {
       title: 'System',
-      items: [
+      items: isAdmin ? [
         { path: '/alerts', icon: AlertTriangle, label: 'Alerts' },
         { path: '/reports', icon: BarChart3, label: 'Reports' },
+        { path: '/users', icon: Users, label: 'User Management' },
         { path: '/settings', icon: Settings, label: 'Settings' },
+      ] : [
+        { path: '/alerts', icon: AlertTriangle, label: 'Alerts' },
+        { path: '/reports', icon: BarChart3, label: 'Reports' }
       ]
     }
   ];
